@@ -1,6 +1,8 @@
 package com.telegram.bot.service;
 
+import com.telegram.bot.cash.UserLocationCash;
 import com.telegram.bot.entity.UserLocation;
+import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.MessageEntity;
@@ -15,6 +17,7 @@ import java.util.Arrays;
 import java.util.List;
 
 @Service
+@AllArgsConstructor
 public class MenuService {
 
     public SendMessage getMainMenuMessage(long chatId, String textMessage, long userId) {
@@ -66,10 +69,10 @@ public class MenuService {
         SendMessage sendMessage = new SendMessage();
         sendMessage.setChatId(String.valueOf(chatId));
         sendMessage.setText("Click on location which you want to delete");
-        MessageEntity messageEntity = new MessageEntity();
         sendMessage.setReplyMarkup(inlineKeyboardMarkup);
         return sendMessage;
     }
+
 
     private ReplyKeyboardMarkup getLocationMenuKeyboard(long userId) {
         ReplyKeyboardMarkup replyKeyboardMarkup = new ReplyKeyboardMarkup();
@@ -153,8 +156,23 @@ public class MenuService {
         for (UserLocation location : userLocations) {
             InlineKeyboardButton button = new InlineKeyboardButton();
             button.setText("\uD83D\uDCDB " + location.getUserCountry() + ", "
-                    + location.getUserRegion() + ", " + location.getUserCity());
+                    + location.getUserRegion() + ", " + location.getUserLocality());
             button.setCallbackData("delete:" + location.getLocationId());
+            buttons.add(Arrays.asList(button));
+        }
+        inlineKeyboardMarkup.setKeyboard(buttons);
+        return inlineKeyboardMarkup;
+    }
+
+    public InlineKeyboardMarkup getInlineKeyboardForAddLocation(List<UserLocation> userLocations) {
+        InlineKeyboardMarkup inlineKeyboardMarkup = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> buttons = new ArrayList<>();
+        for (int i = 0; i < userLocations.size(); i++) {
+            InlineKeyboardButton button = new InlineKeyboardButton();
+            button.setText("✅ " + userLocations.get(i).getUserCountry() + ", "
+                    + userLocations.get(i).getUserRegion() + " Region"
+                    + ", " + userLocations.get(i).getUserLocality());
+            button.setCallbackData("add:" + i);
             buttons.add(Arrays.asList(button));
         }
         inlineKeyboardMarkup.setKeyboard(buttons);

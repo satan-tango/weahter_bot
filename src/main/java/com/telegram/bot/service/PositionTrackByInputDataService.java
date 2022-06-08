@@ -1,37 +1,75 @@
 package com.telegram.bot.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.telegram.bot.apiconfig.GeoAPIFyConfig;
 import com.telegram.bot.entity.UserLocation;
+import lombok.AllArgsConstructor;
 import lombok.SneakyThrows;
-import org.json.JSONObject;
+import org.json.simple.JSONArray;
+import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
 import org.springframework.stereotype.Service;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 @Service
+@AllArgsConstructor
 public class PositionTrackByInputDataService {
+
+    private final GeoAPIFyConfig geoAPIFyConfig;
 
     @SneakyThrows
     public List<UserLocation> getLocation(String location) {
         String response = getDataFromAPI(location);
-        //   // Map<String, List<Map<String,Maps>>> map = new ObjectMapper().readValue(String.valueOf(response), Map.class);
-        return null;
+        JSONParser parser = new JSONParser();
+        JSONObject rootJsonObject = (JSONObject) parser.parse(response);
+        JSONArray userLocationJsonArray = (JSONArray) rootJsonObject.get("features");
+        List<UserLocation> list = new ArrayList<>();
+        for (Object it : userLocationJsonArray) {
+            JSONObject userLocationJsonObject = (JSONObject) it;
+            userLocationJsonObject = (JSONObject) userLocationJsonObject.get("properties");
+            userLocationJsonObject = (JSONObject) userLocationJsonObject.get("address");
+            String country = (String) userLocationJsonObject.get("country");
+            String region = (String) userLocationJsonObject.get("region");
+            if (region == null) {
+                region = (String) userLocationJsonObject.get("state");
+            }
+            if (region != null) {
+                region = region.split(" ")[0];
+            }
+            String locality = (String) userLocationJsonObject.get("city");
+            if (locality == null) {
+                locality = (String) userLocationJsonObject.get("town");
+            }
+            if (locality == null) {
+                locality = (String) userLocationJsonObject.get("village");
+            }
+            UserLocation loc = new UserLocation();
+            if (country == null || region == null || locality == null) {
+                continue;
+            }
+            loc.setUserCountry(country);
+            loc.setUserRegion(region);
+            loc.setUserLocality(locality);
+            list.add(loc);
+
+        }
+        return list;
     }
 
     @SneakyThrows
     private String getDataFromAPI(String location) {
         final String APIUrl = "https://nominatim.openstreetmap.org/search";
+        location = location.replaceAll(" ", "%20");
         URL url = new URL(APIUrl + "?" + "city=" + location +
-                "&format=geojson" +
                 "&accept-language=en" +
                 "&limit=5" +
+                "&format=geojson" +
                 "&addressdetails=1");
-
         HttpURLConnection con = (HttpURLConnection) url.openConnection();
         con.setRequestMethod("GET");
 
@@ -42,7 +80,6 @@ public class PositionTrackByInputDataService {
             response.append(inputLine);
         }
         in.close();
-        JSONObject jsonObject = new JSONObject(response.toString());
         return String.valueOf(response);
     }
 }

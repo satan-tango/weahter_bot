@@ -12,21 +12,16 @@ public class CallbackQueryHandler {
     private final EventHandler eventHandler;
 
     public BotApiMethod<?> processCallbackQuery(CallbackQuery buttonQuery) {
-        long chatId = buttonQuery.getMessage().getChatId();
-        long userId = buttonQuery.getFrom().getId();
 
-        BotApiMethod<?> callbackAnswer = null;
-
-        String data = buttonQuery.getData();
-        long locationId = 1;
-        if (data.contains("delete")) {
-            String[] deleteLocation = data.split(":");
-            data = deleteLocation[0];
-            locationId = Long.parseLong(deleteLocation[1]);
-        }
-        switch (data) {
+        String callBack = buttonQuery.getData();
+        String[] arr = callBack.split(":");
+        String callbackCommand = arr[0];
+        String data = arr[1];
+        switch (callbackCommand) {
             case "delete":
-                return eventHandler.deleteLocation(locationId, buttonQuery);
+                return eventHandler.deleteLocation(Long.parseLong(data), buttonQuery);
+            case "add":
+                return eventHandler.saveLocation(Integer.parseInt(data), buttonQuery);
             default:
                 return null;
         }

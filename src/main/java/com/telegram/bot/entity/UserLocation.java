@@ -1,6 +1,8 @@
 package com.telegram.bot.entity;
 
+import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 import org.hibernate.annotations.Fetch;
 import org.hibernate.annotations.OnDelete;
 import org.hibernate.annotations.OnDeleteAction;
@@ -9,6 +11,7 @@ import javax.persistence.*;
 
 @Entity
 @Data
+@NoArgsConstructor
 @Table(name = "user_location")
 public class UserLocation {
 
@@ -24,11 +27,9 @@ public class UserLocation {
     @Column(name = "region")
     private String userRegion;
 
-    @Column(name = "city")
-    private String userCity;
+    @Column(name = "locality")
+    private String userLocality;
 
-    @Column(name = "label")
-    private String userLabel;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "user_id")

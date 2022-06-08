@@ -5,6 +5,9 @@ import com.telegram.bot.apiconfig.PositionTrackAPIConfig;
 import com.telegram.bot.entity.UserLocation;
 import lombok.AllArgsConstructor;
 import lombok.SneakyThrows;
+import org.json.simple.JSONArray;
+import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
 import org.springframework.stereotype.Service;
 
 import java.io.BufferedReader;
@@ -23,14 +26,22 @@ public class PositionTrackByCoordinateService {
     @SneakyThrows
     public UserLocation getLocation(double latitude, double longitude) {
         String response = getDataFromApi(latitude, longitude);
-        Map<String, List<Map<String, String>>> map = new ObjectMapper().readValue(String.valueOf(response), Map.class);
-        List<Map<String, String>> list = (List<Map<String, String>>) map.get("data");
-        Map<String, String> data = (Map<String, String>) list.get(0);
+        JSONParser parser = new JSONParser();
+        JSONObject rootJsonObject = (JSONObject) parser.parse(response);
+        JSONArray userLocationJsonArray = (JSONArray) rootJsonObject.get("data");
+        JSONObject userLocationJsonObject = (JSONObject) userLocationJsonArray.get(0);
+        String country = (String) userLocationJsonObject.get("country");
+        String region = (String) userLocationJsonObject.get("region");
+        String locality = (String) userLocationJsonObject.get("locality");
+        if (locality == null) {
+            locality = (String) userLocationJsonObject.get("county");
+        }
+
         UserLocation userLocation = new UserLocation();
-        userLocation.setUserCountry(data.get("country"));
-        userLocation.setUserRegion(data.get("region"));
-        userLocation.setUserCity(data.get("county"));
-        userLocation.setUserLabel(data.get("label"));
+        userLocation.setUserCountry(country);
+        userLocation.setUserRegion(region);
+        userLocation.setUserLocality(locality);
+
         return userLocation;
     }
 

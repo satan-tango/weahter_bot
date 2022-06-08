@@ -4,23 +4,12 @@ import com.telegram.bot.cash.BotStateCash;
 import com.telegram.bot.model.handler.CallbackQueryHandler;
 import com.telegram.bot.model.handler.MessageHandler;
 import lombok.AllArgsConstructor;
-import org.hibernate.pretty.MessageHelper;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.meta.api.methods.BotApiMethod;
-import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardMarkup;
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardButton;
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardRow;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
 
 @Component
 @AllArgsConstructor
@@ -52,7 +41,8 @@ public class TelegramFacade {
         BotState botState;
         String inputMsg = message.getText();
 
-        if (botStateCash.getBotStateMap().get(message.getChatId()) == BotState.ADD_LOCATION) {
+        if (botStateCash.getBotStateMap().get(message.getChatId()) == BotState.ADD_LOCATION
+                && !inputMsg.equals("/start")) {
             botState = BotState.LOCATION_BY_CHAT;
             return messageHandler.handle(message, botState);
         }
