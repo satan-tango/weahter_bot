@@ -1,6 +1,5 @@
 package com.telegram.bot.service;
 
-import com.telegram.bot.apiconfig.GeoAPIFyConfig;
 import com.telegram.bot.entity.UserLocation;
 import lombok.AllArgsConstructor;
 import lombok.SneakyThrows;
@@ -20,7 +19,6 @@ import java.util.List;
 @AllArgsConstructor
 public class PositionTrackByInputDataService {
 
-    private final GeoAPIFyConfig geoAPIFyConfig;
 
     @SneakyThrows
     public List<UserLocation> getLocation(String location) {
