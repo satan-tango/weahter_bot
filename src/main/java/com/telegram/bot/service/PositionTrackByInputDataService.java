@@ -3,6 +3,7 @@ package com.telegram.bot.service;
 import com.telegram.bot.entity.UserLocation;
 import lombok.AllArgsConstructor;
 import lombok.SneakyThrows;
+import org.apache.http.client.utils.URIBuilder;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
@@ -46,6 +47,9 @@ public class PositionTrackByInputDataService {
             if (locality == null) {
                 locality = (String) userLocationJsonObject.get("village");
             }
+            if (region == null) {
+                region = locality;
+            }
             UserLocation loc = new UserLocation();
             if (country == null || region == null || locality == null) {
                 continue;
@@ -53,6 +57,15 @@ public class PositionTrackByInputDataService {
             loc.setUserCountry(country);
             loc.setUserRegion(region);
             loc.setUserLocality(locality);
+            if (!list.isEmpty()) {
+                if (list.stream()
+                        .anyMatch(e -> e.getUserCountry().equals(loc.getUserCountry()) ||
+                                e.getUserRegion().equals(loc.getUserRegion()) ||
+                                e.getUserLocality().equals(loc.getUserLocality()))) {
+                    continue;
+                }
+
+            }
             list.add(loc);
 
         }
@@ -62,12 +75,15 @@ public class PositionTrackByInputDataService {
     @SneakyThrows
     private String getDataFromAPI(String location) {
         final String APIUrl = "https://nominatim.openstreetmap.org/search";
-        location = location.replaceAll(" ", "%20");
-        URL url = new URL(APIUrl + "?" + "city=" + location +
-                "&accept-language=en" +
-                "&limit=5" +
-                "&format=geojson" +
-                "&addressdetails=1");
+        // location = location.replaceAll(" ", "%20");
+        URIBuilder uriBuilder = new URIBuilder(APIUrl);
+        uriBuilder.setParameter("city", location);
+        uriBuilder.setParameter("accept-language", "en");
+        uriBuilder.setParameter("limit", "10");
+        uriBuilder.setParameter("format", "geojson");
+        uriBuilder.setParameter("addressdetails", "1");
+
+        URL url = uriBuilder.build().toURL();
         HttpURLConnection con = (HttpURLConnection) url.openConnection();
         con.setRequestMethod("GET");
 

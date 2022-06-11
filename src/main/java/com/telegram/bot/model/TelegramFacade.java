@@ -31,7 +31,7 @@ public class TelegramFacade {
                 return handleInputMessage(message);
             }
             if (message != null && message.hasLocation()) {
-                return messageHandler.handle(message, BotState.LOCATION_BY_GPS);
+                return messageHandler.handle(message, BotState.LOCATION_BY_COORDINATE);
             }
         }
         return null;
@@ -40,12 +40,16 @@ public class TelegramFacade {
     private BotApiMethod<?> handleInputMessage(Message message) {
         BotState botState;
         String inputMsg = message.getText();
+        long chatId = message.getChatId();
 
-        if (botStateCash.getBotStateMap().get(message.getChatId()) == BotState.ADD_LOCATION
-                && !inputMsg.equals("/start")) {
-            botState = BotState.LOCATION_BY_CHAT;
-            return messageHandler.handle(message, botState);
+        if (botStateCash.getBotStateMap().get(chatId) != null) {
+            if (botStateCash.getCurrentBotState(chatId) == BotState.ADD_LOCATION
+                    && !inputMsg.equals("/start") && !inputMsg.equals("\uD83D\uDD19 Back")) {
+                botState = BotState.LOCATION_BY_CHAT;
+                return messageHandler.handle(message, botState);
+            }
         }
+
 
         switch (inputMsg) {
             case "/start":
@@ -70,13 +74,16 @@ public class TelegramFacade {
                 botState = BotState.DELETE_LOCATION;
                 break;
             case ("Location"):
-                botState = BotState.LOCATION_BY_GPS;
+                botState = BotState.LOCATION_BY_COORDINATE;
+                break;
+            case ("\uD83D\uDD19 Back"):
+                botState = botStateCash.getPreviousBotState(chatId);
                 break;
             default:
-                if (botStateCash.getBotStateMap().get(message.getChatId()) == null) {
+                if (botStateCash.getBotStateMap().get(chatId) == null) {
                     botState = BotState.START;
                 } else {
-                    botState = botStateCash.getBotStateMap().get(message.getChatId());
+                    botState = botStateCash.getCurrentBotState(chatId);
                 }
         }
         return messageHandler.handle(message, botState);

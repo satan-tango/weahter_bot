@@ -83,9 +83,12 @@ public class MenuService {
         List<KeyboardRow> keyboard = new ArrayList<>();
 
         KeyboardRow row1 = new KeyboardRow();
+        KeyboardRow row2 = new KeyboardRow();
         row1.add(new KeyboardButton("Add location"));
         row1.add(new KeyboardButton("Delete location"));
+        row2.add(new KeyboardButton("\uD83D\uDD19 Back"));
         keyboard.add(row1);
+        keyboard.add(row2);
         replyKeyboardMarkup.setKeyboard(keyboard);
 
         return replyKeyboardMarkup;
@@ -100,9 +103,12 @@ public class MenuService {
         List<KeyboardRow> keyboard = new ArrayList<>();
 
         KeyboardRow row1 = new KeyboardRow();
+        KeyboardRow row2 = new KeyboardRow();
         row1.add(new KeyboardButton("Locations"));
         row1.add(new KeyboardButton("Language"));
+        row2.add(new KeyboardButton("\uD83D\uDD19 Back"));
         keyboard.add(row1);
+        keyboard.add(row2);
         replyKeyboardMarkup.setKeyboard(keyboard);
 
         return replyKeyboardMarkup;
@@ -117,11 +123,14 @@ public class MenuService {
         List<KeyboardRow> keyboard = new ArrayList<>();
 
         KeyboardRow row1 = new KeyboardRow();
+        KeyboardRow row2 = new KeyboardRow();
         KeyboardButton keyboardButton = new KeyboardButton();
         keyboardButton.setText("Location");
+        row2.add(new KeyboardButton("\uD83D\uDD19 Back"));
         keyboardButton.setRequestLocation(true);
         row1.add(keyboardButton);
         keyboard.add(row1);
+        keyboard.add(row2);
         replyKeyboardMarkup.setKeyboard(keyboard);
 
         return replyKeyboardMarkup;
@@ -156,12 +165,46 @@ public class MenuService {
         for (UserLocation location : userLocations) {
             InlineKeyboardButton button = new InlineKeyboardButton();
             button.setText("\uD83D\uDCDB " + location.getUserCountry() + ", "
-                    + location.getUserRegion() + ", " + location.getUserLocality());
+                    + location.getUserRegion() + " Region, " + location.getUserLocality());
             button.setCallbackData("delete:" + location.getLocationId());
             buttons.add(Arrays.asList(button));
         }
         inlineKeyboardMarkup.setKeyboard(buttons);
         return inlineKeyboardMarkup;
+    }
+
+    public InlineKeyboardMarkup getInlineKeyboardForWeather(List<UserLocation> userLocations) {
+        InlineKeyboardMarkup inlineKeyboardMarkup = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> buttons = new ArrayList<>();
+
+        for (UserLocation location : userLocations) {
+            InlineKeyboardButton button = new InlineKeyboardButton();
+            button.setText("\uD83D\uDCCC " + location.getUserCountry() + ", "
+                    + location.getUserRegion() + " Region, " + location.getUserLocality());
+            button.setCallbackData("weather:" + location.getLocationId());
+            buttons.add(Arrays.asList(button));
+        }
+        inlineKeyboardMarkup.setKeyboard(buttons);
+        return inlineKeyboardMarkup;
+    }
+
+    public ReplyKeyboardMarkup getWeatherMenuKeyboard() {
+        ReplyKeyboardMarkup replyKeyboardMarkup = new ReplyKeyboardMarkup();
+        replyKeyboardMarkup.setSelective(true);
+        replyKeyboardMarkup.setResizeKeyboard(true);
+        replyKeyboardMarkup.setOneTimeKeyboard(false);
+
+        List<KeyboardRow> keyboard = new ArrayList<>();
+
+        KeyboardRow row1 = new KeyboardRow();
+        KeyboardRow row2 = new KeyboardRow();
+        row1.add(new KeyboardButton("Add location"));
+        row2.add(new KeyboardButton("\uD83D\uDD19 Back"));
+        keyboard.add(row1);
+        keyboard.add(row2);
+        replyKeyboardMarkup.setKeyboard(keyboard);
+
+        return replyKeyboardMarkup;
     }
 
     public InlineKeyboardMarkup getInlineKeyboardForAddLocation(List<UserLocation> userLocations) {

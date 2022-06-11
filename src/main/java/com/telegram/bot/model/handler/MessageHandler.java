@@ -34,14 +34,16 @@ public class MessageHandler {
             botState = BotState.ADD_LOCATION;
         }
 
-        botStateCash.saveBotState(userId, botState);
-
+        botStateCash.saveBotState(chatId, botState);
         switch (botState.name()) {
             case ("START"):
+                botStateCash.cleaningBotSateCash(chatId);
                 return menuService.getMainMenuMessage(chatId, "Hello,\n" +
                         "I am the weather bot and i can inform\n" +
                         "about the weather. Select an action\n" +
                         "from the menu.", userId);
+            case ("WEATHER"):
+                return eventHandler.weatherStartPage(chatId, userId);
             case ("SETTINGS"):
                 return menuService.getSettingsMenuMessage(chatId, "Settings menu", userId);
             case ("LOCATIONS"):
@@ -49,8 +51,8 @@ public class MessageHandler {
             case "ADD_LOCATION":
                 return menuService.getPositionMenuMessage(chatId, "Press button to share your location\n" +
                         "or send the name of location", userId);
-            case "LOCATION_BY_GPS":
-                return eventHandler.saveLocationByGPS(chatId, userId, message);
+            case "LOCATION_BY_COORDINATE":
+                return eventHandler.saveLocationByCoordinate(chatId, userId, message);
             case "LOCATION_BY_CHAT":
                 return eventHandler.saveLocationByChat(chatId, userId, message);
             case "DELETE_LOCATION":

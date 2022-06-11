@@ -22,6 +22,8 @@ public class CallbackQueryHandler {
                 return eventHandler.deleteLocation(Long.parseLong(data), buttonQuery);
             case "add":
                 return eventHandler.saveLocation(Integer.parseInt(data), buttonQuery);
+            case "weather":
+                return eventHandler.showWeather(Long.parseLong(data), buttonQuery);
             default:
                 return null;
         }

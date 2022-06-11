@@ -2,23 +2,23 @@ package com.telegram.bot.model.handler;
 
 import com.telegram.bot.DAO.UserDAO;
 import com.telegram.bot.DAO.UserLocationDAO;
+import com.telegram.bot.cash.BotStateCash;
 import com.telegram.bot.cash.UserLocationCash;
+import com.telegram.bot.config.ApplicationContextProvider;
 import com.telegram.bot.entity.User;
 import com.telegram.bot.entity.UserLocation;
-import com.telegram.bot.service.MenuService;
-import com.telegram.bot.service.PositionTrackByCoordinateService;
-import com.telegram.bot.service.PositionTrackByInputDataService;
-import com.telegram.bot.service.ValidateInputDataService;
+import com.telegram.bot.model.TelegramBot;
+import com.telegram.bot.service.*;
 import lombok.AllArgsConstructor;
+import lombok.SneakyThrows;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.meta.api.methods.BotApiMethod;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageReplyMarkup;
-import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Message;
 
-import java.util.ArrayList;
+
 import java.util.List;
 
 @Component
@@ -39,6 +39,10 @@ public class EventHandler {
 
     private final UserLocationCash userLocationCash;
 
+    private final BotStateCash botStateCash;
+
+    private final WeatherByLocationService weatherByLocationService;
+
 
     public void saveNewUser(Message message, long userId) {
         String name = message.getFrom().getFirstName();
@@ -50,7 +54,7 @@ public class EventHandler {
         userDAO.saveUser(user);
     }
 
-    public BotApiMethod<?> saveLocationByGPS(long chatId, long userId, Message message) {
+    public BotApiMethod<?> saveLocationByCoordinate(long chatId, long userId, Message message) {
         Double latitude = message.getLocation().getLatitude();
         Double longitude = message.getLocation().getLongitude();
         UserLocation userLocation = positionTrackByCoordinateService.getLocation(latitude, longitude);
@@ -64,8 +68,10 @@ public class EventHandler {
                 .findAny()
                 .isEmpty()) {
             userLocationDAO.saveLocation(userLocation);
+            botStateCash.cleaningBotSateCash(chatId);
             return menuService.getMainMenuMessage(chatId, "Location successfully saved", userId);
         }
+        botStateCash.cleaningBotSateCash(chatId);
         return menuService.getMainMenuMessage(chatId, "This location is already exist", userId);
     }
 
@@ -85,11 +91,13 @@ public class EventHandler {
         }
 
         userLocationCash.saveUserLocation(userID, list);
-        sendMessage.setText("Pick your location");
+        sendMessage.setText("Select the desired location");
         sendMessage.setReplyMarkup(menuService.getInlineKeyboardForAddLocation(list));
         return sendMessage;
     }
 
+
+    @SneakyThrows
     public BotApiMethod<?> saveLocation(int index, CallbackQuery callbackQuery) {
         long chatId = callbackQuery.getMessage().getChatId();
         long userId = callbackQuery.getFrom().getId();
@@ -97,8 +105,16 @@ public class EventHandler {
         editMessageReplyMarkup.setChatId(String.valueOf(chatId));
         editMessageReplyMarkup.setMessageId(callbackQuery.getMessage().getMessageId());
         editMessageReplyMarkup.setReplyMarkup(null);
-        if (userLocationCash.getUserLocationMap().get(userId).isEmpty()) {
-            return editMessageReplyMarkup;
+
+        SendMessage sendMessage = new SendMessage();
+        TelegramBot telegramBot = ApplicationContextProvider.getApplicationContext().getBean(TelegramBot.class);
+        sendMessage.setChatId(String.valueOf(chatId));
+        if (userLocationCash.getUserLocationMap().get(userId) == null) {
+            sendMessage.setText("Invalid data, do operation from the begging");
+            telegramBot.execute(sendMessage);
+            telegramBot.execute(editMessageReplyMarkup);
+
+            return menuService.getMainMenuMessage(chatId, "Main menu", userId);
         }
         UserLocation userLocation = userLocationCash.getUserLocationMap().get(userId).get(index);
         if (userLocationDAO.findByUserID(userId)
@@ -111,27 +127,63 @@ public class EventHandler {
             userLocation.setUser(userDAO.findByUserId(userId));
             userLocationDAO.saveLocation(userLocation);
             userLocationCash.deleteUserLocation(userId);
-            return editMessageReplyMarkup;
+
+
+            sendMessage.setText("Location successfully saved");
+            botStateCash.cleaningBotSateCash(chatId);
+            telegramBot.execute(sendMessage);
+            telegramBot.execute(editMessageReplyMarkup);
+
+            return menuService.getMainMenuMessage(chatId, "Main menu", userId);
         }
         userLocationCash.deleteUserLocation(userId);
+
+        sendMessage.setText("Location is already exist");
+        telegramBot.execute(sendMessage);
+
         return editMessageReplyMarkup;
     }
 
     public BotApiMethod<?> deleteLocation(long locationId, CallbackQuery buttonQuery) {
         long userId = buttonQuery.getFrom().getId();
         long chatId = buttonQuery.getMessage().getChatId();
-        userLocationDAO.deleteLocation(locationId);
-        List<UserLocation> userLocation = userLocationDAO.findByUserID(userId);
         EditMessageReplyMarkup editMessageReplyMarkup = new EditMessageReplyMarkup();
         editMessageReplyMarkup.setChatId(String.valueOf(chatId));
         editMessageReplyMarkup.setMessageId(buttonQuery.getMessage().getMessageId());
-        if (userLocation.isEmpty()) {
+        if (userLocationDAO.findByLocationId(locationId) == null) {
             editMessageReplyMarkup.setReplyMarkup(null);
             return editMessageReplyMarkup;
         }
-        editMessageReplyMarkup.setReplyMarkup(menuService.getInlineKeyboardForDeleteLocation(userLocation));
+        userLocationDAO.deleteLocation(locationId);
+
+        List<UserLocation> userLocations = userLocationDAO.findByUserID(userId);
+        if (userLocations.isEmpty()) {
+            editMessageReplyMarkup.setReplyMarkup(null);
+            return editMessageReplyMarkup;
+        }
+        editMessageReplyMarkup.setReplyMarkup(menuService.getInlineKeyboardForDeleteLocation(userLocations));
 
         return editMessageReplyMarkup;
+    }
+
+    @SneakyThrows
+    public BotApiMethod<?> weatherStartPage(long chatId, long userId) {
+        TelegramBot telegramBot = ApplicationContextProvider.getApplicationContext().getBean(TelegramBot.class);
+        List<UserLocation> userLocations = userLocationDAO.findByUserID(userId);
+        if (userLocations.isEmpty()) {
+            return menuService.getPositionMenuMessage(chatId, "Yoh have not added any location", userId);
+        }
+        SendMessage sendMessage = new SendMessage();
+        sendMessage.setChatId(String.valueOf(chatId));
+        sendMessage.setText("Choose a location\uD83C\uDF1A");
+        sendMessage.setReplyMarkup(menuService.getInlineKeyboardForWeather(userLocations));
+        telegramBot.execute(sendMessage);
+
+        SendMessage sendMessage1 = new SendMessage();
+        sendMessage1.setChatId(String.valueOf(chatId));
+        sendMessage1.setText("Location menu\uD83E\uDDED");
+        sendMessage1.setReplyMarkup(menuService.getWeatherMenuKeyboard());
+        return sendMessage1;
     }
 
     public BotApiMethod<?> queryLocationButtonToDelete(long chatId, long userId) {
@@ -144,5 +196,23 @@ public class EventHandler {
 
         return sendMessage;
 
+    }
+
+    public BotApiMethod<?> showWeather(long locationId, CallbackQuery buttonQuery) {
+        long userId = buttonQuery.getFrom().getId();
+        long chatId = buttonQuery.getMessage().getChatId();
+        EditMessageReplyMarkup editMessageReplyMarkup = new EditMessageReplyMarkup();
+        editMessageReplyMarkup.setChatId(String.valueOf(chatId));
+        editMessageReplyMarkup.setMessageId(buttonQuery.getMessage().getMessageId());
+        if (userLocationDAO.findByLocationId(locationId) == null) {
+            editMessageReplyMarkup.setReplyMarkup(null);
+            return editMessageReplyMarkup;
+        }
+        String location = userLocationDAO.findByLocationId(locationId).getUserLocality();
+        String currentWeather = weatherByLocationService.getCurrentWeather(location);
+        SendMessage sendMessage = new SendMessage();
+        sendMessage.setChatId(String.valueOf(chatId));
+        sendMessage.setText(currentWeather);
+        return sendMessage;
     }
 }

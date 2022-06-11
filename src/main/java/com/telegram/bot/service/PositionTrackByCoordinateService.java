@@ -5,6 +5,7 @@ import com.telegram.bot.apiconfig.PositionTrackAPIConfig;
 import com.telegram.bot.entity.UserLocation;
 import lombok.AllArgsConstructor;
 import lombok.SneakyThrows;
+import org.apache.http.client.utils.URIBuilder;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
@@ -47,9 +48,11 @@ public class PositionTrackByCoordinateService {
 
     @SneakyThrows
     private String getDataFromApi(double latitude, double longitude) {
-        URL url = new URL("http://api.positionstack.com/v1/reverse" + "?access_key=" +
-                positionTrackAPIConfig.getAccessKey() +
-                "&query=" + latitude + "," + longitude);
+        final String APIUrl = "http://api.positionstack.com/v1/reverse";
+        URIBuilder uriBuilder = new URIBuilder(APIUrl);
+        uriBuilder.addParameter("access_key", positionTrackAPIConfig.getAccessKey());
+        uriBuilder.addParameter("query", latitude + "," + longitude);
+        URL url = uriBuilder.build().toURL();
 
         HttpURLConnection con = (HttpURLConnection) url.openConnection();
         con.setRequestMethod("GET");
