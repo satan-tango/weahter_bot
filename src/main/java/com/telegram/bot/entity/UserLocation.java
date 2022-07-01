@@ -30,6 +30,9 @@ public class UserLocation {
     @Column(name = "locality")
     private String userLocality;
 
+    @Column(name = "default_loc")
+    private Boolean locationForWeatherByDefault;
+
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "user_id")

@@ -38,7 +38,15 @@ public class UserLocationDAO {
         userLocationRepository.save(userLocation);
     }
 
-    public void deleteLocation(long locationId) {
+    public UserLocation findByLocationForWeatherByDefault(long userId) {
+        List<UserLocation> list = userRepository.findByUserId(userId).getLocations();
+        return list.stream()
+                .filter(location -> location.getLocationForWeatherByDefault() == true)
+                .findFirst()
+                .get();
+    }
+
+    public void deleteLocationByID(long locationId) {
         userLocationRepository.deleteById(locationId);
     }
 }

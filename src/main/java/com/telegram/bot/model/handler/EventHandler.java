@@ -3,18 +3,25 @@ package com.telegram.bot.model.handler;
 import com.telegram.bot.DAO.UserDAO;
 import com.telegram.bot.DAO.UserLocationDAO;
 import com.telegram.bot.cash.BotStateCash;
+import com.telegram.bot.cash.UserCurrentWeatherCash;
+import com.telegram.bot.cash.UserForecastWeatherCash;
 import com.telegram.bot.cash.UserLocationCash;
 import com.telegram.bot.config.ApplicationContextProvider;
 import com.telegram.bot.entity.User;
 import com.telegram.bot.entity.UserLocation;
+import com.telegram.bot.model.BotState;
 import com.telegram.bot.model.TelegramBot;
+import com.telegram.bot.model.UserCurrentWeather;
+import com.telegram.bot.model.UserForecastWeather;
 import com.telegram.bot.service.*;
 import lombok.AllArgsConstructor;
 import lombok.SneakyThrows;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.meta.api.methods.BotApiMethod;
+import org.telegram.telegrambots.meta.api.methods.ParseMode;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageReplyMarkup;
+import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Message;
 
@@ -43,6 +50,10 @@ public class EventHandler {
 
     private final WeatherByLocationService weatherByLocationService;
 
+    private final UserCurrentWeatherCash userCurrentWeatherCash;
+
+    private final UserForecastWeatherCash userForecastWeatherCash;
+
 
     public void saveNewUser(Message message, long userId) {
         String name = message.getFrom().getFirstName();
@@ -67,6 +78,11 @@ public class EventHandler {
                         loc.getUserLocality().equals(userLocation.getUserLocality()))
                 .findAny()
                 .isEmpty()) {
+            if (userLocationDAO.findByUserID(userId).isEmpty()) {
+                userLocation.setLocationForWeatherByDefault(true);
+            } else {
+                userLocation.setLocationForWeatherByDefault(false);
+            }
             userLocationDAO.saveLocation(userLocation);
             botStateCash.cleaningBotSateCash(chatId);
             return menuService.getMainMenuMessage(chatId, "Location successfully saved", userId);
@@ -78,7 +94,7 @@ public class EventHandler {
     public BotApiMethod<?> saveLocationByChat(long chatId, long userID, Message message) {
         String location = message.getText();
         if (!validateInputDataService.validateInputLocation(location)) {
-            return menuService.getPositionMenuMessage(chatId, "Invalid location", userID);
+            return menuService.getPositionMenuMessage(chatId, "Invalid location", userID, false);
         }
 
         SendMessage sendMessage = new SendMessage();
@@ -90,15 +106,15 @@ public class EventHandler {
             return sendMessage;
         }
 
-        userLocationCash.saveUserLocation(userID, list);
+        int mapKey = userLocationCash.saveUserLocation(userID, list);
         sendMessage.setText("Select the desired location");
-        sendMessage.setReplyMarkup(menuService.getInlineKeyboardForAddLocation(list));
+        sendMessage.setReplyMarkup(menuService.getInlineKeyboardForAddLocation(list, mapKey));
         return sendMessage;
     }
 
 
     @SneakyThrows
-    public BotApiMethod<?> saveLocation(int index, CallbackQuery callbackQuery) {
+    public BotApiMethod<?> saveLocation(int mapKey, int index, CallbackQuery callbackQuery) {
         long chatId = callbackQuery.getMessage().getChatId();
         long userId = callbackQuery.getFrom().getId();
         EditMessageReplyMarkup editMessageReplyMarkup = new EditMessageReplyMarkup();
@@ -116,7 +132,14 @@ public class EventHandler {
 
             return menuService.getMainMenuMessage(chatId, "Main menu", userId);
         }
-        UserLocation userLocation = userLocationCash.getUserLocationMap().get(userId).get(index);
+        UserLocation userLocation = userLocationCash.getUserLocationListByKey(userId, mapKey, index);
+        if (userLocation == null) {
+            sendMessage.setText("Invalid data, do operation from the begging");
+            telegramBot.execute(sendMessage);
+            telegramBot.execute(editMessageReplyMarkup);
+
+            return menuService.getMainMenuMessage(chatId, "Main menu", userId);
+        }
         if (userLocationDAO.findByUserID(userId)
                 .stream().
                 filter(loc -> loc.getUserCountry().equals(userLocation.getUserCountry()) &&
@@ -125,8 +148,13 @@ public class EventHandler {
                 .findAny()
                 .isEmpty()) {
             userLocation.setUser(userDAO.findByUserId(userId));
+            if (userLocationDAO.findByUserID(userId).isEmpty()) {
+                userLocation.setLocationForWeatherByDefault(true);
+            } else {
+                userLocation.setLocationForWeatherByDefault(false);
+            }
             userLocationDAO.saveLocation(userLocation);
-            userLocationCash.deleteUserLocation(userId);
+            userLocationCash.deleteUserLocation(userId, mapKey);
 
 
             sendMessage.setText("Location successfully saved");
@@ -136,7 +164,7 @@ public class EventHandler {
 
             return menuService.getMainMenuMessage(chatId, "Main menu", userId);
         }
-        userLocationCash.deleteUserLocation(userId);
+        userLocationCash.deleteUserLocation(userId, mapKey);
 
         sendMessage.setText("Location is already exist");
         telegramBot.execute(sendMessage);
@@ -154,7 +182,18 @@ public class EventHandler {
             editMessageReplyMarkup.setReplyMarkup(null);
             return editMessageReplyMarkup;
         }
-        userLocationDAO.deleteLocation(locationId);
+        if (userLocationDAO.findByLocationId(locationId).getLocationForWeatherByDefault()) {
+            userLocationDAO.deleteLocationByID(locationId);
+            List<UserLocation> list = userLocationDAO.findByUserID(userId);
+            if (!list.isEmpty()) {
+                UserLocation userLocation = list.get(0);
+                userLocation.setLocationForWeatherByDefault(true);
+                userLocationDAO.saveLocation(userLocation);
+            }
+        } else {
+            userLocationDAO.deleteLocationByID(locationId);
+        }
+
 
         List<UserLocation> userLocations = userLocationDAO.findByUserID(userId);
         if (userLocations.isEmpty()) {
@@ -167,21 +206,27 @@ public class EventHandler {
     }
 
     @SneakyThrows
-    public BotApiMethod<?> weatherStartPage(long chatId, long userId) {
+    public BotApiMethod<?> currentWeatherStartPage(long chatId, long userId) {
         TelegramBot telegramBot = ApplicationContextProvider.getApplicationContext().getBean(TelegramBot.class);
-        List<UserLocation> userLocations = userLocationDAO.findByUserID(userId);
-        if (userLocations.isEmpty()) {
-            return menuService.getPositionMenuMessage(chatId, "Yoh have not added any location", userId);
+        if (userLocationDAO.findByUserID(userId).isEmpty()) {
+            botStateCash.saveBotState(chatId, BotState.ADD_LOCATION);
+            return menuService.getPositionMenuMessage(chatId, "Yoh have not added any location", userId, false);
         }
+        UserLocation userLocation = userLocationDAO.findByLocationForWeatherByDefault(userId);
+
+
+        UserCurrentWeather currentWeather = weatherByLocationService.getCurrentWeather(userLocation.getUserLocality());
+        userCurrentWeatherCash.saveCurrentWeather(userId, currentWeather);
         SendMessage sendMessage = new SendMessage();
         sendMessage.setChatId(String.valueOf(chatId));
-        sendMessage.setText("Choose a location\uD83C\uDF1A");
-        sendMessage.setReplyMarkup(menuService.getInlineKeyboardForWeather(userLocations));
+        sendMessage.setText(currentWeather.getBriefCurrentWeather());
+        sendMessage.setParseMode(ParseMode.MARKDOWN);
+        sendMessage.setReplyMarkup(menuService.getInlineKeyboardForCurrentWeather("Details", currentWeather.getHash()));
         telegramBot.execute(sendMessage);
 
         SendMessage sendMessage1 = new SendMessage();
         sendMessage1.setChatId(String.valueOf(chatId));
-        sendMessage1.setText("Location menu\uD83E\uDDED");
+        sendMessage1.setText("Weather menu\uD83E\uDDED");
         sendMessage1.setReplyMarkup(menuService.getWeatherMenuKeyboard());
         return sendMessage1;
     }
@@ -209,10 +254,171 @@ public class EventHandler {
             return editMessageReplyMarkup;
         }
         String location = userLocationDAO.findByLocationId(locationId).getUserLocality();
-        String currentWeather = weatherByLocationService.getCurrentWeather(location);
+        UserCurrentWeather currentWeather = weatherByLocationService.getCurrentWeather(location);
+        userCurrentWeatherCash.saveCurrentWeather(userId, currentWeather);
         SendMessage sendMessage = new SendMessage();
         sendMessage.setChatId(String.valueOf(chatId));
-        sendMessage.setText(currentWeather);
+        sendMessage.setText(currentWeather.getBriefCurrentWeather());
+        sendMessage.setParseMode(ParseMode.MARKDOWN);
+        sendMessage.setReplyMarkup(menuService.getInlineKeyboardForCurrentWeather("Details", currentWeather.getHash()));
         return sendMessage;
+    }
+
+    @SneakyThrows
+    public BotApiMethod<?> showDifStateStateInCurrentWeather(long hashCode, CallbackQuery buttonQuery) {
+        long userId = buttonQuery.getFrom().getId();
+        long chatId = buttonQuery.getMessage().getChatId();
+
+
+        UserCurrentWeather userCurrentWeather = userCurrentWeatherCash.getUserCurrentWeatherByHash(userId, hashCode);
+        EditMessageReplyMarkup editMessageReplyMarkup = new EditMessageReplyMarkup();
+        TelegramBot telegramBot = ApplicationContextProvider.getApplicationContext().getBean(TelegramBot.class);
+        SendMessage sendMessage = new SendMessage();
+        sendMessage.setChatId(String.valueOf(chatId));
+
+        editMessageReplyMarkup.setChatId(String.valueOf(chatId));
+        editMessageReplyMarkup.setMessageId(buttonQuery.getMessage().getMessageId());
+        if (userCurrentWeather == null) {
+            editMessageReplyMarkup.setReplyMarkup(null);
+            sendMessage.setText("Requested weather is no longer stored");
+            telegramBot.execute(sendMessage);
+            return editMessageReplyMarkup;
+        }
+        EditMessageText editMessageText = new EditMessageText();
+        editMessageText.setChatId(String.valueOf(chatId));
+        editMessageText.setMessageId(buttonQuery.getMessage().getMessageId());
+        if (buttonQuery.getMessage().getReplyMarkup().getKeyboard().get(0).get(0).getText().equals("Details")) {
+            editMessageReplyMarkup.setReplyMarkup(menuService.getInlineKeyboardForCurrentWeather("Brief", hashCode));
+            editMessageText.setText(userCurrentWeather.getBriefCurrentWeather() + userCurrentWeather.getDetailCurrentWeather());
+            editMessageText.setParseMode(ParseMode.MARKDOWN);
+            telegramBot.execute(editMessageText);
+            return editMessageReplyMarkup;
+        } else {
+            editMessageReplyMarkup.setReplyMarkup(menuService.getInlineKeyboardForCurrentWeather("Details", hashCode));
+            editMessageText.setText(userCurrentWeather.getBriefCurrentWeather());
+            editMessageText.setParseMode(ParseMode.MARKDOWN);
+            telegramBot.execute(editMessageText);
+            return editMessageReplyMarkup;
+        }
+    }
+
+    public BotApiMethod<?> selectDefaultLocation(long chatId, long userId) {
+        if (userLocationDAO.findByUserID(userId).isEmpty()) {
+            botStateCash.saveBotState(chatId, BotState.ADD_LOCATION);
+            return menuService.getPositionMenuMessage(chatId, "Yoh have not added any location", userId, false);
+        }
+        List<UserLocation> userLocations = userLocationDAO.findByUserID(userId);
+
+        int indexForWeatherByDefault = 0;
+        for (int i = 0; i < userLocations.size(); i++) {
+            if (userLocations.get(i).getLocationForWeatherByDefault()) {
+                indexForWeatherByDefault = i;
+                break;
+            }
+        }
+        if (indexForWeatherByDefault != 0) {
+            UserLocation loc = userLocations.get(0);
+            userLocations.set(0, userLocations.get(indexForWeatherByDefault));
+            userLocations.set(indexForWeatherByDefault, loc);
+        }
+        SendMessage sendMessage = new SendMessage();
+        sendMessage.setChatId(String.valueOf(chatId));
+        sendMessage.setText("Select location");
+        sendMessage.setReplyMarkup(menuService.getInlineKeyboardForSelectLocation(userLocations));
+        return sendMessage;
+    }
+
+    public BotApiMethod<?> saveDefaultLocation(long locationId, CallbackQuery buttonQuery) {
+        long userId = buttonQuery.getFrom().getId();
+        long chatId = buttonQuery.getMessage().getChatId();
+        List<UserLocation> userLocationList = userLocationDAO.findByUserID(userId);
+        if (userLocationList == null) {
+            return null;
+        }
+        if (userLocationList.size() == 1) {
+            return null;
+        }
+        UserLocation prevLocationByDefault = userLocationDAO.findByLocationForWeatherByDefault(userId);
+        if (locationId == prevLocationByDefault.getLocationId()) {
+            return null;
+        } else {
+            prevLocationByDefault.setLocationForWeatherByDefault(false);
+            userLocationDAO.saveLocation(prevLocationByDefault);
+            UserLocation currentLocationByDefault = userLocationDAO.findByLocationId(locationId);
+            currentLocationByDefault.setLocationForWeatherByDefault(true);
+            userLocationDAO.saveLocation(currentLocationByDefault);
+        }
+        userLocationList = userLocationDAO.findByUserID(userId);
+
+
+        EditMessageReplyMarkup editMessageReplyMarkup = new EditMessageReplyMarkup();
+        editMessageReplyMarkup.setChatId(String.valueOf(chatId));
+        editMessageReplyMarkup.setMessageId(buttonQuery.getMessage().getMessageId());
+        editMessageReplyMarkup.setReplyMarkup(menuService.getInlineKeyboardForSelectLocation(userLocationList));
+        return editMessageReplyMarkup;
+    }
+
+    @SneakyThrows
+    public BotApiMethod<?> forecastWeatherStartPage(long chatId, long userId) {
+        TelegramBot telegramBot = ApplicationContextProvider.getApplicationContext().getBean(TelegramBot.class);
+        if (userLocationDAO.findByUserID(userId).isEmpty()) {
+            botStateCash.saveBotState(chatId, BotState.ADD_LOCATION);
+            return menuService.getPositionMenuMessage(chatId, "Yoh have not added any location", userId, false);
+        }
+        UserLocation userLocation = userLocationDAO.findByLocationForWeatherByDefault(userId);
+        UserForecastWeather userForecastWeather = weatherByLocationService.getForecastWeather(userLocation.getUserLocality());
+        userForecastWeatherCash.saveForecastWeather(userId, userForecastWeather);
+
+        SendMessage sendMessage = new SendMessage();
+        sendMessage.setChatId(String.valueOf(chatId));
+        sendMessage.setText(userForecastWeather.getBriefCurrentWeather());
+        sendMessage.setParseMode(ParseMode.MARKDOWN);
+        sendMessage.setReplyMarkup(menuService.getInlineKeyboardForForecastWeather("Details", userForecastWeather.getHash()));
+        telegramBot.execute(sendMessage);
+
+        SendMessage sendMessage1 = new SendMessage();
+        sendMessage1.setChatId(String.valueOf(chatId));
+        sendMessage1.setText("Weather menu\uD83E\uDDED");
+        sendMessage1.setReplyMarkup(menuService.getWeatherMenuKeyboard());
+        return sendMessage1;
+
+    }
+
+    @SneakyThrows
+    public BotApiMethod<?> showDifStateStateInForecatWeather(long forecastHash, CallbackQuery buttonQuery) {
+        long userId = buttonQuery.getFrom().getId();
+        long chatId = buttonQuery.getMessage().getChatId();
+
+        UserForecastWeather userForecastWeather = userForecastWeatherCash.getUserForecastWeatherByHash(userId, forecastHash);
+        EditMessageReplyMarkup editMessageReplyMarkup = new EditMessageReplyMarkup();
+        TelegramBot telegramBot = ApplicationContextProvider.getApplicationContext().getBean(TelegramBot.class);
+        SendMessage sendMessage = new SendMessage();
+        sendMessage.setChatId(String.valueOf(chatId));
+
+        editMessageReplyMarkup.setChatId(String.valueOf(chatId));
+        editMessageReplyMarkup.setMessageId(buttonQuery.getMessage().getMessageId());
+        if (userForecastWeather == null) {
+            editMessageReplyMarkup.setReplyMarkup(null);
+            sendMessage.setText("Requested weather is no longer stored");
+            telegramBot.execute(sendMessage);
+            return editMessageReplyMarkup;
+        }
+        EditMessageText editMessageText = new EditMessageText();
+        editMessageText.setChatId(String.valueOf(chatId));
+        editMessageText.setMessageId(buttonQuery.getMessage().getMessageId());
+
+        if (buttonQuery.getMessage().getReplyMarkup().getKeyboard().get(0).get(0).getText().equals("Details")) {
+            editMessageReplyMarkup.setReplyMarkup(menuService.getInlineKeyboardForForecastWeather("Brief", forecastHash));
+            editMessageText.setText(userForecastWeather.getDetailCurrentWeather());
+            editMessageText.setParseMode(ParseMode.MARKDOWN);
+            telegramBot.execute(editMessageText);
+            return editMessageReplyMarkup;
+        } else {
+            editMessageReplyMarkup.setReplyMarkup(menuService.getInlineKeyboardForForecastWeather("Details", forecastHash));
+            editMessageText.setText(userForecastWeather.getBriefCurrentWeather());
+            editMessageText.setParseMode(ParseMode.MARKDOWN);
+            telegramBot.execute(editMessageText);
+            return editMessageReplyMarkup;
+        }
     }
 }

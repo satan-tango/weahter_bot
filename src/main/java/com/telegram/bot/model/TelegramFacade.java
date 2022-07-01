@@ -4,6 +4,7 @@ import com.telegram.bot.cash.BotStateCash;
 import com.telegram.bot.model.handler.CallbackQueryHandler;
 import com.telegram.bot.model.handler.MessageHandler;
 import lombok.AllArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.meta.api.methods.BotApiMethod;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
@@ -44,7 +45,9 @@ public class TelegramFacade {
 
         if (botStateCash.getBotStateMap().get(chatId) != null) {
             if (botStateCash.getCurrentBotState(chatId) == BotState.ADD_LOCATION
-                    && !inputMsg.equals("/start") && !inputMsg.equals("\uD83D\uDD19 Back")) {
+                    && !inputMsg.equals("/start") && !inputMsg.equals("\uD83D\uDD19 Back") ||
+                    botStateCash.getCurrentBotState(chatId) == BotState.ADD_LOCATION_FOR_NEW_USER
+                            && !inputMsg.equals("/start") && !inputMsg.equals("\uD83D\uDD19 Back")) {
                 botState = BotState.LOCATION_BY_CHAT;
                 return messageHandler.handle(message, botState);
             }
@@ -75,6 +78,9 @@ public class TelegramFacade {
                 break;
             case ("Location"):
                 botState = BotState.LOCATION_BY_COORDINATE;
+                break;
+            case ("Select location"):
+                botState = BotState.SELECT_LOCATION;
                 break;
             case ("\uD83D\uDD19 Back"):
                 botState = botStateCash.getPreviousBotState(chatId);

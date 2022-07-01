@@ -24,26 +24,47 @@ public class BotStateCash {
             list.add(botState);
             botStateMap.put(chatId, list);
         } else {
-            botStateMap.put(chatId, new ArrayList<>(Arrays.asList(botState)));
+            botStateMap.put(chatId, new ArrayList<>(Arrays.asList(BotState.START, botState)));
         }
     }
 
     public BotState getPreviousBotState(long chatId) {
         if (botStateMap.get(chatId) != null) {
             List<BotState> list = botStateMap.get(chatId);
+            if (list.isEmpty() || list.size() == 1) {
+                botStateMap.put(chatId, new ArrayList<>(Arrays.asList(BotState.START)));
+                return BotState.START;
+            }
             if (list.get(list.size() - 1) == BotState.LOCATION_BY_CHAT ||
                     list.get(list.size() - 1) == BotState.DELETE_LOCATION) {
                 list.remove(list.size() - 1);
             }
-            list.remove(list.size() - 1);
-            if (list.isEmpty()) {
-                list.add(BotState.START);
-                botStateMap.put(chatId, list);
+            if (list.get(list.size() - 1) == BotState.ADD_LOCATION &&
+                    list.get(list.size() - 2) == BotState.WEATHER) {
+                botStateMap.put(chatId, new ArrayList<>(Arrays.asList(BotState.START)));
                 return BotState.START;
             }
+            if (list.get(list.size() - 1) == BotState.ADD_LOCATION &&
+                    list.get(list.size() - 2) == BotState.FORECAST) {
+                botStateMap.put(chatId, new ArrayList<>(Arrays.asList(BotState.START)));
+                return BotState.START;
+            }
+            if (list.get(list.size() - 1) == BotState.SELECT_LOCATION &&
+                    list.get(list.size() - 2) == BotState.WEATHER) {
+                botStateMap.put(chatId, new ArrayList<>(Arrays.asList(BotState.START)));
+                return BotState.START;
+            }
+            if (list.get(list.size() - 1) == BotState.SELECT_LOCATION &&
+                    list.get(list.size() - 2) == BotState.FORECAST) {
+                botStateMap.put(chatId, new ArrayList<>(Arrays.asList(BotState.START)));
+                return BotState.START;
+            }
+
+            list.remove(list.size() - 1);
             botStateMap.put(chatId, list);
             return list.get(list.size() - 1);
         } else {
+            botStateMap.put(chatId, new ArrayList<>(Arrays.asList(BotState.START)));
             return BotState.START;
         }
     }
