@@ -1,4 +1,4 @@
-#Weather telegram bot
+# Weather telegram bot
 
 __Telegram bot to get up-to-date weather__
 
@@ -14,7 +14,7 @@ you can delete location from your list.*
 
 
 
-Stack: 
+Stack:
 - java 17
 - Spring data
 - Spring web
